@@ -26,7 +26,6 @@ const Address = () => {
             displayAddress: formatDisplayAddress(selectedType, data)
         };
         setLiveAddress(finalData);
-        console.log(finalData);
         return true;
     };
 

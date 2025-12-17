@@ -162,7 +162,7 @@ export default function Confirmation() {
 
 
     return (
-        <div className="pb-24">
+        <div className="md:pb-24">
             <div className="mt-14 md:mt-0">
                 <ServiceDetails title="Review & Confirm" currentStep={4} />
             </div>
@@ -314,7 +314,9 @@ export default function Confirmation() {
                 </div>
             </div>
 
-            <NextBtn onClick={handelBookingConfirmation} name="Book Now" />
+            <div className="my-4 md:my-0">
+                <NextBtn onClick={handelBookingConfirmation} name="Book Now" />
+            </div>
 
             {/* MODAL */}
             {openModal && (

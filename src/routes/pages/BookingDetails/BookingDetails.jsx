@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FaUser } from "react-icons/fa";
 import { FiMessageCircle } from "react-icons/fi";
 import { FiPhone } from "react-icons/fi";
-import { useLoaderData, useNavigate } from "react-router-dom";
+import { useLoaderData } from "react-router-dom";
 import { useSummary } from "../../../provider/SummaryProvider";
-import { IoIosArrowForward } from "react-icons/io";
+import { IoIosArrowBack, IoIosArrowForward } from "react-icons/io";
 import dirhum from '../../../assets/icon/dirhum.png';
+import { useQuery } from "@tanstack/react-query";
+import { LuArrowLeft } from "react-icons/lu";
 
 
 export default function BookingDetails() {
@@ -17,6 +19,9 @@ export default function BookingDetails() {
     const [modalAddress, setModalAddress] = useState(false);
     const [modalPrice, setModalPrice] = useState(false);
     const [modalRescudle, setModalRescudle] = useState(false);
+    const scrollerRef = useRef(null);
+    const [selectedDay, setSelectedDay] = useState(null);
+    const [selectedTime, setSelectedTime] = useState(null);
 
     const handelReschudeleFun = () => {
         setModalRescudle(true);
@@ -65,6 +70,116 @@ export default function BookingDetails() {
 
     // Get address parts from the item data
     const addressParts = extractAddressParts(item?.Data?.address);
+
+    const { data: dateTime, isLoading } = useQuery({
+        queryKey: ['date-time-user'],
+        queryFn: async () => {
+            const res = await fetch(`${import.meta.env.VITE_BACKEND_API_URL}/date-time`);
+            if (!res.ok) {
+                throw new Error("Failed to fetch date-time");
+            }
+            return res.json();
+        }
+    });
+
+    const formatDateForDisplay = (dateString) => {
+        if (!dateString) return "";
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric'
+            });
+        } catch (error) {
+            console.error("Date formatting error:", error);
+            return dateString;
+        }
+    };
+
+    // Prepare days data from API - Merge duplicate dates
+    const getAvailableDays = () => {
+        if (!dateTime?.Data || !Array.isArray(dateTime.Data)) {
+            return [];
+        }
+
+        // Create a map to group by date
+        const dateMap = new Map();
+
+        dateTime.Data.forEach(item => {
+            const date = item.date;
+            const timeSlots = item.time || [];
+
+            if (dateMap.has(date)) {
+                // If date already exists, merge time slots
+                const existing = dateMap.get(date);
+                // Add unique time slots
+                timeSlots.forEach(slot => {
+                    if (!existing.timeSlots.includes(slot)) {
+                        existing.timeSlots.push(slot);
+                    }
+                });
+            } else {
+                // If date doesn't exist, add new entry
+                dateMap.set(date, {
+                    id: item.id,
+                    date: date,
+                    short: formatDateForDisplay(date),
+                    label: getFullDateLabel(date),
+                    timeSlots: [...timeSlots] // Create a new array
+                });
+            }
+        });
+
+        // Convert map to array and sort by date
+        const daysArray = Array.from(dateMap.values()).sort((a, b) =>
+            new Date(a.date) - new Date(b.date)
+        );
+
+        return daysArray;
+    };
+
+    const getFullDateLabel = (dateString) => {
+        if (!dateString) return "";
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+        } catch (error) {
+            console.error("Date formatting error:", error);
+            return dateString;
+        }
+    };
+
+    // Get available time slots for selected day
+    const getAvailableTimes = () => {
+        if (!selectedDay) return [];
+
+        const selectedDayData = getAvailableDays().find(day => day.date === selectedDay);
+        if (!selectedDayData || !selectedDayData.timeSlots) return [];
+
+        // Sort time slots if needed
+        return selectedDayData.timeSlots.sort((a, b) => {
+            // Simple time comparison - you might want to improve this
+            return a.localeCompare(b);
+        });
+    };
+
+    const scroll = (dir) => {
+        if (!scrollerRef.current) return;
+        const amount = 200;
+
+        scrollerRef.current.scrollBy({
+            left: dir === "left" ? -amount : amount,
+            behavior: "smooth"
+        });
+    };
+
+    const availableDays = getAvailableDays();
+    const availableTimes = getAvailableTimes();
 
     return (
         <div className="w-full min-h-screen p-4 flex justify-center items-start">
@@ -484,80 +599,122 @@ export default function BookingDetails() {
                     >
                         <div className="relative w-full max-w-[600px] mx-4 bg-white rounded-lg shadow-xl overflow-hidden h-[90vh] flex flex-col"
                             onClick={(e) => e.stopPropagation()}>
-
-                            {/* Header - Fixed height */}
-                            <div className="shrink-0 flex items-center justify-center p-5 border-b border-gray-200 relative">
-                                <button className="absolute right-4 cursor-pointer text-gray-500 hover:text-gray-700 p-1.5"
-                                    onClick={() => setModalRescudle(false)}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-                                    </svg>
-                                </button>
-
-                                <h2 className="text-lg font-semibold text-gray-800 tracking-tight">
-                                    Total to pay
-                                </h2>
+                            <div className="flex items-center justify-between py-3 md:py-6 px-6 border-b">
+                                <div onClick={() => setModalRescudle(false)} className="">
+                                    <LuArrowLeft />
+                                </div>
+                                <p className="text-xl font-medium">Reschedule</p>
+                                <p></p>
                             </div>
+                            <div className="">
+                                <div className="p-6 bg-white rounded-lg shadow-sm">
 
-                            {/* Main content - Scrollable area */}
-                            <div className="flex-1 overflow-y-auto px-6 py-5">
-                                {/* Address details section */}
-                                <div className="space-y-4 mb-6">
-                                    <div className="flex justify-between">
-                                        <p className="text-base text-gray-700">Service Charges</p>
-                                        <p className="text-xl font-medium text-gray-900 flex items-center gap-1">
-                                            <img src={dirhum} alt="" className="h-5 w-5" />
-                                            {serviceCharge}
-                                        </p>
-                                    </div>
+                                    {/* Day Selector */}
+                                    <h3 className="text-lg font-semibold mb-4">
+                                        Which day would you like us to come?
+                                    </h3>
+                                    {isLoading && <p>Loading...</p>}
+                                    {availableDays.length === 0 ? (
+                                        <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                                            <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                            <p className="text-gray-600 font-medium">No available dates</p>
+                                            <p className="text-sm text-gray-500 mt-1">Please check back later for available slots</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="relative max-w-[300px] mx-auto md:max-w-4xl">
+                                                {/* Left Scroll Button */}
+                                                <button
+                                                    onClick={() => scroll("left")}
+                                                    className="hidden absolute -left-4 top-1/2 -translate-y-1/2 z-10 h-10 w-10 md:flex items-center justify-center"
+                                                >
+                                                    <IoIosArrowBack className="text-3xl font-bold" />
+                                                </button>
 
-                                    <div className="flex justify-between">
-                                        <p className="text-base text-gray-700">Cash on Delivery Charges</p>
-                                        <p className="text-xl flex items-center gap-1 font-medium text-gray-900">
-                                            <img src={dirhum} alt="" className="h-5 w-5" />
-                                            60
-                                        </p>
-                                    </div>
+                                                {/* Day List */}
+                                                <div
+                                                    ref={scrollerRef}
+                                                    className="flex gap-3 overflow-x-auto no-scrollbar py-2 px-10"
+                                                >
+                                                    {availableDays.map((day, index) => {
+                                                        const isActive = selectedDay === day.date;
 
-                                    <div className="flex justify-between">
-                                        <p className="text-base text-gray-700">Service Fee</p>
-                                        <p className="text-xl flex items-center gap-1 font-medium text-gray-900">
-                                            <img src={dirhum} alt="" className="h-5 w-5" />
-                                            {serviceFee}
-                                        </p>
-                                    </div>
+                                                        return (
+                                                            <div
+                                                                key={`${day.date}-${index}`}
+                                                                onClick={() => setSelectedDay(day.date)}
+                                                                className={`snap-start min-w-[100px] md:min-w-[85px] px-2 py-1 rounded-lg border cursor-pointer flex flex-col items-center gap-1 transition
+                                                                                   ${isActive ? "bg-[#B2D7DE] border-transparent shadow" : "bg-white border-gray-200 hover:bg-gray-50"}
+                                                                               `}
+                                                            >
+                                                                <div className="text-sm text-gray-600">{day.short}</div>
+                                                                <div className="text-sm font-medium">{day.label}</div>
+                                                                {day.timeSlots && day.timeSlots.length > 0 && (
+                                                                    <div className="text-xs text-green-600 mt-1">
+                                                                        {day.timeSlots.length} slot{day.timeSlots.length !== 1 ? 's' : ''}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
 
-                                    <div className="flex justify-between">
-                                        <p className="text-base text-gray-700">Discount</p>
-                                        <p className="text-xl flex items-center gap-1 font-medium text-gray-900">
-                                            <img src={dirhum} alt="" className="h-5 w-5" />
-                                            60
-                                        </p>
-                                    </div>
+                                                {/* Right Scroll Button */}
+                                                <button
+                                                    onClick={() => scroll("right")}
+                                                    className="hidden absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 md:flex items-center justify-center cursor-pointer"
+                                                >
+                                                    <IoIosArrowForward className="text-3xl font-bold" />
+                                                </button>
+                                            </div>
 
-                                    <div className="flex justify-between">
-                                        <p className="text-base text-gray-700">Sub Total</p>
-                                        <p className="text-xl flex items-center gap-1 font-medium text-gray-900">
-                                            <img src={dirhum} alt="" className="h-5 w-5" />
-                                            {subTotal}
-                                        </p>
-                                    </div>
+                                            {/* Time Selector */}
+                                            {selectedDay && (
+                                                <>
+                                                    <h3 className="text-lg font-semibold mt-8 mb-4">
+                                                        What time would you like us to arrive?
+                                                    </h3>
 
-                                    <div className="flex justify-between">
-                                        <p className="text-base text-gray-700">VAT (5%)</p>
-                                        <p className="text-xl flex items-center gap-1 font-medium text-gray-900">
-                                            <img src={dirhum} alt="" className="h-5 w-5" />
-                                            {vat}
-                                        </p>
-                                    </div>
+                                                    {availableTimes.length === 0 ? (
+                                                        <div className="text-center py-6 border-2 border-dashed border-gray-300 rounded-lg">
+                                                            <svg className="w-10 h-10 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <p className="text-gray-600">No time slots available for this date</p>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                            {availableTimes.map((timeSlot, index) => (
+                                                                <button
+                                                                    key={index}
+                                                                    onClick={() => setSelectedTime(timeSlot)}
+                                                                    className={`w-full text-left rounded-lg border px-6 py-4 transition
+                                                                                       ${selectedTime === timeSlot ? "bg-[#E6F6F6] border-teal-300 shadow-sm" : "bg-white border-gray-200 hover:bg-gray-50"}
+                                                                                   `}
+                                                                >
+                                                                    <span className="text-sm font-medium">{timeSlot}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </>
+                                    )}
 
-                                    <div className="flex justify-between border-t pt-4 border-e-gray-200">
-                                        <p className="text-base text-gray-700">Total to pay</p>
-                                        <p className="text-xl flex items-center gap-1 font-medium text-gray-900">
-                                            <img src={dirhum} alt="" className="h-5 w-5" />
-                                            {total}
-                                        </p>
+                                    {/* Note */}
+                                    <div className="mt-8 p-4 bg-gray-50 border rounded-md flex gap-4 text-sm text-gray-700">
+                                        <svg className="w-5 h-5 text-gray-500 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M12 9v2m0 4h.01M21 12A9 9 0 1112 3a9 9 0 019 9z" strokeWidth="1.5" />
+                                        </svg>
+
+                                        <div>
+                                            We can not guarantee the availability of the selected or preferred technician once the date/time of service is changed or any other changes are requested.
+                                        </div>
                                     </div>
+                                    <button className="w-full bg-[#ED6329] py-3 text-white font-medium mt-2.5 rounded-sm">Confirm</button>
                                 </div>
                             </div>
                         </div>
