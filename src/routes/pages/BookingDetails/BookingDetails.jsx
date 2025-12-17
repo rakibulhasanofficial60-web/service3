@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FaUser } from "react-icons/fa";
 import { FiMessageCircle } from "react-icons/fi";
 import { FiPhone } from "react-icons/fi";
@@ -8,6 +8,7 @@ import { IoIosArrowBack, IoIosArrowForward } from "react-icons/io";
 import dirhum from '../../../assets/icon/dirhum.png';
 import { useQuery } from "@tanstack/react-query";
 import { LuArrowLeft } from "react-icons/lu";
+import { useForm } from "react-hook-form";
 
 
 export default function BookingDetails() {
@@ -19,9 +20,21 @@ export default function BookingDetails() {
     const [modalAddress, setModalAddress] = useState(false);
     const [modalPrice, setModalPrice] = useState(false);
     const [modalRescudle, setModalRescudle] = useState(false);
+    const [modalPaymentMethod, setModalPaymentMethod] = useState(false);
     const scrollerRef = useRef(null);
     const [selectedDay, setSelectedDay] = useState(null);
     const [selectedTime, setSelectedTime] = useState(null);
+    const [modalAddressUpdate, setModalAddressUpdate] = useState(false);
+    const [isUpdatingAddress, setIsUpdatingAddress] = useState(false);
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(item?.Data?.paymentMethod || "Cash");
+    const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
+
+    const { register, handleSubmit, formState: { errors }, reset, setValue } = useForm({
+        mode: "onChange"
+    });
+
+    const [selectedType, setSelectedType] = useState("Apartment");
+    const buttons = ["Apartment", "Villa", "Office", "Other"];
 
     const handelReschudeleFun = () => {
         setModalRescudle(true);
@@ -43,6 +56,10 @@ export default function BookingDetails() {
         console.log(item);
     }
 
+    const handleChangePaymentMethod = () => {
+        setModalPaymentMethod(true);
+    }
+
     // Extract address parts from the string
     const extractAddressParts = (addressString) => {
         if (!addressString) {
@@ -51,20 +68,19 @@ export default function BookingDetails() {
                 buildingName: "",
                 area: "",
                 city: "",
-                type: "Apartment" // Default type
+                type: "Apartment"
             };
         }
 
         // Split the address string by " - "
         const parts = addressString.split(" - ").map(part => part.trim());
 
-        // Assign parts based on their position
         return {
-            apartmentNo: parts[0] || "", // First part
-            buildingName: parts[1] || "", // Second part
-            area: parts[2] || "", // Third part
-            city: parts[3] || "", // Fourth part (last part)
-            type: "Apartment" // You mentioned it's Apartment type
+            apartmentNo: parts[0] || "",
+            buildingName: parts[1] || "",
+            area: parts[2] || "",
+            city: parts[3] || "",
+            type: "Apartment"
         };
     };
 
@@ -103,7 +119,6 @@ export default function BookingDetails() {
             return [];
         }
 
-        // Create a map to group by date
         const dateMap = new Map();
 
         dateTime.Data.forEach(item => {
@@ -111,27 +126,23 @@ export default function BookingDetails() {
             const timeSlots = item.time || [];
 
             if (dateMap.has(date)) {
-                // If date already exists, merge time slots
                 const existing = dateMap.get(date);
-                // Add unique time slots
                 timeSlots.forEach(slot => {
                     if (!existing.timeSlots.includes(slot)) {
                         existing.timeSlots.push(slot);
                     }
                 });
             } else {
-                // If date doesn't exist, add new entry
                 dateMap.set(date, {
                     id: item.id,
                     date: date,
                     short: formatDateForDisplay(date),
                     label: getFullDateLabel(date),
-                    timeSlots: [...timeSlots] // Create a new array
+                    timeSlots: [...timeSlots]
                 });
             }
         });
 
-        // Convert map to array and sort by date
         const daysArray = Array.from(dateMap.values()).sort((a, b) =>
             new Date(a.date) - new Date(b.date)
         );
@@ -161,9 +172,7 @@ export default function BookingDetails() {
         const selectedDayData = getAvailableDays().find(day => day.date === selectedDay);
         if (!selectedDayData || !selectedDayData.timeSlots) return [];
 
-        // Sort time slots if needed
         return selectedDayData.timeSlots.sort((a, b) => {
-            // Simple time comparison - you might want to improve this
             return a.localeCompare(b);
         });
     };
@@ -180,6 +189,290 @@ export default function BookingDetails() {
 
     const availableDays = getAvailableDays();
     const availableTimes = getAvailableTimes();
+
+    // Format display address
+    const formatDisplayAddress = (type, data) => {
+        switch (type) {
+            case "Apartment":
+            case "Office":
+                return `${data.apartmentNo || ''} - ${data.buildingName || ''} - ${data.area || ''} - ${data.city || ''}`;
+
+            case "Villa":
+                return `${data.villaNo || ''} - ${data.community || ''} - ${data.area || ''} - ${data.city || ''}`;
+
+            case "Other":
+                return `${data.otherNo || ''} - ${data.streetName || ''} - ${data.area || ''} - ${data.city || ''}`;
+
+            default:
+                return `${data.area || ''} - ${data.city || ''}`;
+        }
+    };
+
+    // Handle type change
+    const handleTypeChange = (type) => {
+        setSelectedType(type);
+        // Reset related fields when type changes
+        if (type === "Villa") {
+            setValue("buildingName", "");
+            setValue("apartmentNo", "");
+        } else if (type === "Other") {
+            setValue("buildingName", "");
+            setValue("apartmentNo", "");
+            setValue("community", "");
+            setValue("villaNo", "");
+        } else {
+            setValue("community", "");
+            setValue("villaNo", "");
+            setValue("streetName", "");
+            setValue("otherNo", "");
+            setValue("nickname", "");
+        }
+    };
+
+    // Handle address update submission
+    const handleAddressUpdate = async (data) => {
+        const bookingId = item?.Data?.id;
+
+        if (!bookingId) {
+            alert("Booking ID not found!");
+            return false;
+        }
+
+        // Create the formatted address
+        const formattedAddress = formatDisplayAddress(selectedType, data);
+
+        const updateData = {
+            address: formattedAddress
+        };
+
+        console.log("Updating address with data:", updateData);
+        setIsUpdatingAddress(true);
+
+        try {
+            // Try different API endpoints
+            const endpoints = [
+                `${import.meta.env.VITE_BACKEND_API_URL}/booking/userBooking/${bookingId}`,
+                `${import.meta.env.VITE_BACKEND_API_URL}/booking/${bookingId}`,
+                `${import.meta.env.VITE_BACKEND_API_URL}/userBooking/${bookingId}`,
+                `${import.meta.env.VITE_BACKEND_API_URL}/booking/updateAddress/${bookingId}`
+            ];
+
+            let response = null;
+            let success = false;
+
+            for (const endpoint of endpoints) {
+                try {
+                    console.log("Trying endpoint:", endpoint);
+                    response = await fetch(endpoint, {
+                        method: "PATCH",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ address: formattedAddress }),
+                    });
+
+                    if (response.ok) {
+                        success = true;
+                        break;
+                    }
+                } catch (err) {
+                    console.log("Failed with endpoint:", endpoint, err);
+                }
+            }
+
+            if (success && response) {
+                const result = await response.json();
+                console.log("Address updated successfully:", result);
+                alert("Address updated successfully!");
+                setModalAddressUpdate(false);
+            } else {
+                alert("Failed to update address. Please try a different endpoint or contact support.");
+            }
+        } catch (error) {
+            console.error("Error updating address:", error);
+            alert("Network error. Please check your connection and try again.");
+        } finally {
+            setIsUpdatingAddress(false);
+        }
+
+        return true;
+    };
+
+    // Handle payment method update
+    const handlePaymentMethodUpdate = async () => {
+        const bookingId = item?.Data?.id;
+
+        if (!bookingId) {
+            alert("Booking ID not found!");
+            return false;
+        }
+
+        console.log("Updating payment method to:", selectedPaymentMethod);
+        setIsUpdatingPayment(true);
+
+        try {
+            // Try different API endpoints
+            const endpoints = [
+                `${import.meta.env.VITE_BACKEND_API_URL}/booking/userBooking/${bookingId}`,
+                `${import.meta.env.VITE_BACKEND_API_URL}/booking/${bookingId}`,
+                `${import.meta.env.VITE_BACKEND_API_URL}/userBooking/${bookingId}`,
+                `${import.meta.env.VITE_BACKEND_API_URL}/booking/updatePayment/${bookingId}`
+            ];
+
+            let response = null;
+            let success = false;
+
+            for (const endpoint of endpoints) {
+                try {
+                    console.log("Trying endpoint:", endpoint);
+                    response = await fetch(endpoint, {
+                        method: "PATCH",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            paymentMethod: selectedPaymentMethod
+                        }),
+                    });
+
+                    if (response.ok) {
+                        success = true;
+                        break;
+                    }
+                } catch (err) {
+                    console.log("Failed with endpoint:", endpoint, err);
+                }
+            }
+
+            if (success && response) {
+                const result = await response.json();
+                console.log("Payment method updated successfully:", result);
+                alert(`Payment method changed to ${selectedPaymentMethod} successfully!`);
+                setModalPaymentMethod(false);
+            } else {
+                alert("Failed to update payment method. Please try a different endpoint or contact support.");
+            }
+        } catch (error) {
+            console.error("Error updating payment method:", error);
+            alert("Network error. Please check your connection and try again.");
+        } finally {
+            setIsUpdatingPayment(false);
+        }
+    };
+
+    // Load current address into form when modal opens
+    useEffect(() => {
+        if (modalAddressUpdate && item?.Data?.address) {
+            const parts = item.Data.address.split(" - ");
+            if (parts.length >= 4) {
+                const formData = {
+                    apartmentNo: parts[0] || "",
+                    buildingName: parts[1] || "",
+                    area: parts[2] || "",
+                    city: parts[3] || ""
+                };
+
+                // Set form values
+                setValue("apartmentNo", formData.apartmentNo);
+                setValue("buildingName", formData.buildingName);
+                setValue("area", formData.area);
+                setValue("city", formData.city);
+
+                // Set type based on current address
+                setSelectedType("Apartment");
+            }
+        }
+    }, [modalAddressUpdate, item?.Data?.address, setValue]);
+
+    // Reschedule function
+    const handleRescheduleSubmit = async (id) => {
+        const bookingId = id;
+
+        if (!selectedDay) {
+            alert("Please select a day");
+            return;
+        }
+
+        if (!selectedTime) {
+            alert("Please select a time slot");
+            return;
+        }
+
+        const updatedData = {
+            date: selectedDay,
+            time: selectedTime,
+        };
+
+        console.log("Sending PATCH request for reschedule:", updatedData);
+
+        try {
+            const response = await fetch(
+                `${import.meta.env.VITE_BACKEND_API_URL}/booking/userBooking/${bookingId}`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(updatedData),
+                }
+            );
+
+            console.log("Response status:", response.status);
+            console.log("Response status text:", response.statusText);
+
+            const data = await response.json();
+            console.log("Response data:", data);
+
+            if (response.ok) {
+                console.log("Reschedule successful:", data);
+                setModalRescudle(false);
+                alert("Booking rescheduled successfully!");
+            } else {
+                console.error("Failed:", data);
+                alert(`Failed to reschedule: ${data.message || `Error ${response.status}`}`);
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            alert("Network error. Please check your connection and try again.");
+        }
+    };
+
+    // Auto-select first date
+    useEffect(() => {
+        if (dateTime?.Data && dateTime.Data.length > 0 && !selectedDay) {
+            const days = getAvailableDays();
+            if (days.length > 0) {
+                const firstDay = days[0].date;
+                setSelectedDay(firstDay);
+            }
+        }
+    }, [dateTime, selectedDay]);
+
+
+    const handleUserUpdateBookingStatus = async (id) => {
+        try {
+            const res = await fetch(
+                `${import.meta.env.VITE_BACKEND_API_URL}/booking/update/${id}`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        status: 'Cancelled'
+                    }),
+                }
+            );
+
+            const data = await res.json();
+            if (data.success) {
+                alert("Booking cancel successfully!");
+            } else {
+                alert("Failed to Cancel booking");
+            }
+        } catch (error) {
+            console.error("Update error:", error);
+            alert("Something went wrong!");
+        }
+    };
 
     return (
         <div className="w-full min-h-screen p-4 flex justify-center items-start">
@@ -230,7 +523,6 @@ export default function BookingDetails() {
 
                     <div className="flex justify-between py-2">
                         <p>Address</p>
-                        {/* <p className="text-gray-500">{address?.buildingName}</p> */}
                         <p onClick={() => handelAddressDetails(item)} className="flex items-center text-gray-500 cursor-pointer bg-gray-50 font-medium">{item?.Data?.address} <IoIosArrowForward className="text-xl" /></p>
                     </div>
                 </div>
@@ -271,7 +563,6 @@ export default function BookingDetails() {
                         Manage Booking
                     </button>
                 </div>
-
 
                 {/* Manage Booking Modal */}
                 {openModal &&
@@ -322,7 +613,7 @@ export default function BookingDetails() {
                                     </svg>
                                 </div>
 
-                                <div className="flex justify-between items-center py-4 px-4 cursor-pointer hover:bg-gray-50 transition-colors text-gray-800">
+                                <div className="flex justify-between items-center py-4 px-4 cursor-pointer hover:bg-gray-50 transition-colors text-gray-800" onClick={() => setModalAddressUpdate(true)}>
                                     <div className="flex items-center space-x-4">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
                                             <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" />
@@ -334,7 +625,7 @@ export default function BookingDetails() {
                                     </svg>
                                 </div>
 
-                                <div className="flex justify-between items-center py-4 px-4 cursor-pointer hover:bg-gray-50 transition-colors text-gray-800">
+                                <div className="flex justify-between items-center py-4 px-4 cursor-pointer hover:bg-gray-50 transition-colors text-gray-800" onClick={handleChangePaymentMethod}>
                                     <div className="flex items-center space-x-4">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
                                             <rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" />
@@ -346,7 +637,7 @@ export default function BookingDetails() {
                                     </svg>
                                 </div>
 
-                                <div className="flex justify-between items-center py-4 px-4 cursor-pointer hover:bg-gray-50 transition-colors text-red-600">
+                                <div onClick={() => handleUserUpdateBookingStatus(item?.Data?.id)} className="flex justify-between items-center py-4 px-4 cursor-pointer hover:bg-gray-50 transition-colors text-red-600">
                                     <div className="flex items-center space-x-4">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
                                             <circle cx="12" cy="12" r="10" /><path d="m15 9-6 6" /><path d="m9 9 6 6" />
@@ -361,7 +652,6 @@ export default function BookingDetails() {
                         </div>
                     </div>
                 }
-
 
                 {/* Add Instructions Modal */}
                 {openInstructionsModal &&
@@ -382,7 +672,7 @@ export default function BookingDetails() {
                                     Add Instructions
                                 </h2>
 
-                                <div className="w-6"></div> {/* Empty div for spacing */}
+                                <div className="w-6"></div>
                             </div>
 
                             <div className="p-6">
@@ -425,7 +715,7 @@ export default function BookingDetails() {
                     </div>
                 }
 
-                {/* ADDRESS MODAL - FIXED VERSION */}
+                {/* ADDRESS MODAL - View Current Address */}
                 {modalAddress &&
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 md:items-center md:pt-0 bg-black/50"
                         onClick={() => setModalAddress(false)}
@@ -433,7 +723,6 @@ export default function BookingDetails() {
                         <div className="relative w-full max-w-[600px] mx-4 bg-white rounded-lg shadow-xl overflow-hidden h-[90vh] flex flex-col"
                             onClick={(e) => e.stopPropagation()}>
 
-                            {/* Header - Fixed height */}
                             <div className="shrink-0 flex items-center justify-center p-5 border-b border-gray-200 relative">
                                 <button className="absolute right-4 cursor-pointer text-gray-500 hover:text-gray-700 p-1.5"
                                     onClick={() => setModalAddress(false)}>
@@ -447,9 +736,7 @@ export default function BookingDetails() {
                                 </h2>
                             </div>
 
-                            {/* Main content - Scrollable area */}
                             <div className="flex-1 overflow-y-auto px-6 py-5">
-                                {/* Address details section - UPDATED */}
                                 <div className="space-y-4 mb-6">
                                     <div className="flex justify-between">
                                         <p className="text-base text-gray-700">City</p>
@@ -487,7 +774,6 @@ export default function BookingDetails() {
                                     </div>
                                 </div>
 
-                                {/* Name and address section */}
                                 <div className="space-y-2">
                                     <div className="w-full h-64 rounded-lg overflow-hidden shrink-0">
                                         <iframe
@@ -505,7 +791,7 @@ export default function BookingDetails() {
                     </div>
                 }
 
-                {/* PRICE MODAL  */}
+                {/* PRICE MODAL */}
                 {modalPrice &&
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 md:items-center md:pt-0 bg-black/50"
                         onClick={() => setModalPrice(false)}
@@ -513,7 +799,6 @@ export default function BookingDetails() {
                         <div className="relative w-full max-w-[600px] mx-4 bg-white rounded-lg shadow-xl overflow-hidden h-[90vh] flex flex-col"
                             onClick={(e) => e.stopPropagation()}>
 
-                            {/* Header - Fixed height */}
                             <div className="shrink-0 flex items-center justify-center p-5 border-b border-gray-200 relative">
                                 <button className="absolute right-4 cursor-pointer text-gray-500 hover:text-gray-700 p-1.5"
                                     onClick={() => setModalPrice(false)}>
@@ -527,9 +812,7 @@ export default function BookingDetails() {
                                 </h2>
                             </div>
 
-                            {/* Main content - Scrollable area */}
                             <div className="flex-1 overflow-y-auto px-6 py-5">
-                                {/* Address details section */}
                                 <div className="space-y-4 mb-6">
                                     <div className="flex justify-between">
                                         <p className="text-base text-gray-700">Service Charges</p>
@@ -592,12 +875,13 @@ export default function BookingDetails() {
                     </div>
                 }
 
-                {/* RESCHUDLE MODAL  */}
+                {/* RESCHEDULE MODAL - আগের design ই রাখা হয়েছে */}
                 {modalRescudle &&
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 md:items-center md:pt-0 bg-black/50"
                         onClick={() => setModalRescudle(false)}
                     >
-                        <div className="relative w-full max-w-[600px] mx-4 bg-white rounded-lg shadow-xl overflow-hidden h-[90vh] flex flex-col"
+                        <div className="relative w-full max-w-[600px] mx-4 bg-white rounded-lg shadow-xl 
+                            h-[80vh] flex flex-col overflow-hidden"
                             onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-between py-3 md:py-6 px-6 border-b">
                                 <div onClick={() => setModalRescudle(false)} className="">
@@ -606,7 +890,7 @@ export default function BookingDetails() {
                                 <p className="text-xl font-medium">Reschedule</p>
                                 <p></p>
                             </div>
-                            <div className="">
+                            <div className="flex-1 overflow-y-auto">
                                 <div className="p-6 bg-white rounded-lg shadow-sm">
 
                                     {/* Day Selector */}
@@ -714,7 +998,295 @@ export default function BookingDetails() {
                                             We can not guarantee the availability of the selected or preferred technician once the date/time of service is changed or any other changes are requested.
                                         </div>
                                     </div>
-                                    <button className="w-full bg-[#ED6329] py-3 text-white font-medium mt-2.5 rounded-sm">Confirm</button>
+                                    <button onClick={() => handleRescheduleSubmit(item.Data.id)} className="w-full bg-[#ED6329] py-3 text-white font-medium mt-2.5 rounded-sm">Confirm</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                {/* PAYMENT METHOD CHANGE MODAL */}
+                {modalPaymentMethod &&
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 md:items-center md:pt-0 bg-black/50"
+                        onClick={() => setModalPaymentMethod(false)}
+                    >
+                        <div className="relative w-full max-w-[500px] mx-4 bg-white rounded-lg shadow-xl overflow-hidden h-[80vh] flex flex-col"
+                            onClick={(e) => e.stopPropagation()}>
+
+                            <div className="flex items-center justify-between py-4 px-6 border-b">
+                                <div onClick={() => setModalPaymentMethod(false)} className="cursor-pointer">
+                                    <LuArrowLeft />
+                                </div>
+                                <p className="text-xl font-medium">Change Payment Method</p>
+                                <div className="w-6"></div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6">
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-semibold mb-4">Select Payment Method</h3>
+                                    <p className="text-gray-600 mb-6">Current method: <span className="font-medium">{item?.Data?.paymentMethod || "Not specified"}</span></p>
+
+                                    {/* Payment Method Options */}
+                                    <div className="space-y-4">
+                                        {["Cash", "Credit Card", "Debit Card", "Online Payment", "Wallet"].map((method) => (
+                                            <div
+                                                key={method}
+                                                onClick={() => setSelectedPaymentMethod(method)}
+                                                className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-all duration-200 ${selectedPaymentMethod === method
+                                                    ? "bg-blue-50 border-blue-300 shadow-sm"
+                                                    : "bg-white border-gray-200 hover:bg-gray-50"
+                                                    }`}
+                                            >
+                                                <div className="flex items-center">
+                                                    <div className={`w-5 h-5 rounded-full border-2 mr-3 flex items-center justify-center ${selectedPaymentMethod === method
+                                                        ? "border-blue-500 bg-blue-500"
+                                                        : "border-gray-300"
+                                                        }`}>
+                                                        {selectedPaymentMethod === method && (
+                                                            <div className="w-2 h-2 rounded-full bg-white"></div>
+                                                        )}
+                                                    </div>
+                                                    <span className="font-medium">{method}</span>
+                                                </div>
+
+                                                {/* Payment Method Icons */}
+                                                {method === "Credit Card" && (
+                                                    <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                                                    </svg>
+                                                )}
+                                                {method === "Cash" && (
+                                                    <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                                    </svg>
+                                                )}
+                                                {method === "Online Payment" && (
+                                                    <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                                    </svg>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Note */}
+                                    <div className="mt-8 p-4 bg-yellow-50 border border-yellow-100 rounded-lg">
+                                        <div className="flex gap-3">
+                                            <svg className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                <path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="1.5" />
+                                            </svg>
+                                            <div className="text-sm text-yellow-700">
+                                                <p className="font-medium mb-1">Note:</p>
+                                                <p>Changing payment method may affect the total amount due. Some payment methods may have additional fees.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="border-t p-6">
+                                <div className="flex gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setModalPaymentMethod(false)}
+                                        className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition"
+                                        disabled={isUpdatingPayment}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handlePaymentMethodUpdate}
+                                        className="flex-1 px-4 py-3 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        disabled={isUpdatingPayment}
+                                    >
+                                        {isUpdatingPayment ? (
+                                            <span className="flex items-center justify-center">
+                                                <svg className="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                </svg>
+                                                Updating...
+                                            </span>
+                                        ) : "Update Payment Method"}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                {/* ADDRESS UPDATE MODAL */}
+                {modalAddressUpdate &&
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 md:items-center md:pt-0 bg-black/50"
+                        onClick={() => setModalAddressUpdate(false)}
+                    >
+                        <div className="relative w-full max-w-[600px] mx-4 bg-white rounded-lg shadow-xl h-[80vh] flex flex-col overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between py-3 md:py-6 px-6 border-b">
+                                <div onClick={() => setModalAddressUpdate(false)} className="cursor-pointer">
+                                    <LuArrowLeft />
+                                </div>
+                                <p className="text-xl font-medium">Update Address</p>
+                                <p></p>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4">
+                                <div className="bg-white rounded-xl shadow-lg w-full p-6">
+                                    {/* TYPE BUTTONS */}
+                                    <div className="flex flex-wrap gap-2 mb-6">
+                                        {buttons.map(btn => (
+                                            <button
+                                                key={btn}
+                                                onClick={() => handleTypeChange(btn)}
+                                                type="button"
+                                                className={`flex items-center px-4 py-2 rounded-full transition duration-300 border cursor-pointer
+                                                    ${selectedType === btn ? "bg-teal-600 text-white shadow-md" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+                                            >
+                                                {btn}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* FORM */}
+                                    <form onSubmit={handleSubmit(handleAddressUpdate)} className="space-y-6">
+                                        {/* City */}
+                                        <div>
+                                            <label className="block text-gray-700 font-medium mb-1">City *</label>
+                                            <input
+                                                {...register("city", { required: "City is required" })}
+                                                type="text"
+                                                placeholder="Enter City"
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            />
+                                            {errors.city && <p className="text-red-500 text-sm mt-1">{errors.city.message}</p>}
+                                        </div>
+
+                                        {/* Area */}
+                                        <div>
+                                            <label className="block text-gray-700 font-medium mb-1">Area *</label>
+                                            <input
+                                                {...register("area", { required: "Area is required" })}
+                                                type="text"
+                                                placeholder="Enter Area"
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            />
+                                            {errors.area && <p className="text-red-500 text-sm mt-1">{errors.area.message}</p>}
+                                        </div>
+
+                                        {/* Dynamic Fields */}
+                                        {selectedType === "Villa" && (
+                                            <>
+                                                <div>
+                                                    <label className="block text-gray-700 font-medium mb-1">Community / Street Name *</label>
+                                                    <input
+                                                        {...register("community", { required: "Community is required" })}
+                                                        type="text"
+                                                        placeholder="Enter Community / Street Name"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                    />
+                                                    {errors.community && <p className="text-red-500 text-sm mt-1">{errors.community.message}</p>}
+                                                </div>
+                                                <div>
+                                                    <label className="block text-gray-700 font-medium mb-1">Villa No *</label>
+                                                    <input
+                                                        {...register("villaNo", { required: "Villa number is required" })}
+                                                        type="text"
+                                                        placeholder="Enter Villa Number"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                    />
+                                                    {errors.villaNo && <p className="text-red-500 text-sm mt-1">{errors.villaNo.message}</p>}
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {selectedType === "Other" && (
+                                            <>
+                                                <div>
+                                                    <label className="block text-gray-700 font-medium mb-1">Nickname *</label>
+                                                    <input
+                                                        {...register("nickname", { required: "Nickname is required" })}
+                                                        type="text"
+                                                        placeholder="Enter Nickname"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                    />
+                                                    {errors.nickname && <p className="text-red-500 text-sm mt-1">{errors.nickname.message}</p>}
+                                                </div>
+                                                <div>
+                                                    <label className="block text-gray-700 font-medium mb-1">Street / Building Name *</label>
+                                                    <input
+                                                        {...register("streetName", { required: "Street/Building name is required" })}
+                                                        type="text"
+                                                        placeholder="Enter Street / Building Name"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                    />
+                                                    {errors.streetName && <p className="text-red-500 text-sm mt-1">{errors.streetName.message}</p>}
+                                                </div>
+                                                <div>
+                                                    <label className="block text-gray-700 font-medium mb-1">Apartment / Villa No *</label>
+                                                    <input
+                                                        {...register("otherNo", { required: "Apartment/Villa number is required" })}
+                                                        type="text"
+                                                        placeholder="Enter Apartment / Villa No"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                    />
+                                                    {errors.otherNo && <p className="text-red-500 text-sm mt-1">{errors.otherNo.message}</p>}
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {selectedType !== "Villa" && selectedType !== "Other" && (
+                                            <>
+                                                <div>
+                                                    <label className="block text-gray-700 font-medium mb-1">Building Name *</label>
+                                                    <input
+                                                        {...register("buildingName", { required: "Building name is required" })}
+                                                        type="text"
+                                                        placeholder="Enter Building Name"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                    />
+                                                    {errors.buildingName && <p className="text-red-500 text-sm mt-1">{errors.buildingName.message}</p>}
+                                                </div>
+                                                <div>
+                                                    <label className="block text-gray-700 font-medium mb-1">Apartment No *</label>
+                                                    <input
+                                                        {...register("apartmentNo", { required: "Apartment number is required" })}
+                                                        type="text"
+                                                        placeholder="Enter Apartment No"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                    />
+                                                    {errors.apartmentNo && <p className="text-red-500 text-sm mt-1">{errors.apartmentNo.message}</p>}
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {/* Submit Buttons */}
+                                        <div className="flex gap-3 pt-6 border-t">
+                                            <button
+                                                type="button"
+                                                onClick={() => setModalAddressUpdate(false)}
+                                                className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition"
+                                                disabled={isUpdatingAddress}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="flex-1 px-4 py-3 text-white bg-teal-600 hover:bg-teal-700 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                disabled={isUpdatingAddress}
+                                            >
+                                                {isUpdatingAddress ? (
+                                                    <span className="flex items-center justify-center">
+                                                        <svg className="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        </svg>
+                                                        Updating...
+                                                    </span>
+                                                ) : "Update Address"}
+                                            </button>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
                         </div>
@@ -724,6 +1296,34 @@ export default function BookingDetails() {
         </div>
     );
 };
+
+
+
+
+
+
+
+
+// common modal section
+// <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 md:items-center md:pt-0 bg-black/50"
+//     onClick={() => setModalAddressUpdate(false)}
+// >
+//     <div className="relative w-full max-w-[600px] mx-4 bg-white rounded-lg shadow-xl
+//                             h-[80vh] flex flex-col overflow-hidden"
+//         onClick={(e) => e.stopPropagation()}>
+//         <div className="flex items-center justify-between py-3 md:py-6 px-6 border-b">
+//             <div onClick={() => setModalAddressUpdate(false)} className="">
+//                 <LuArrowLeft />
+//             </div>
+//             <p className="text-xl font-medium">Address Change</p>
+//             <p></p>
+//         </div>
+//         <div className="flex-1 overflow-y-auto">
+
+
+//         </div>
+//     </div>
+// </div>
 
 
 

@@ -19,8 +19,6 @@ const AdminBooking = () => {
         },
     });
 
-    console.log(selectedBooking);
-
     const handleUpdateBooking = async () => {
         if (!selectedBooking) return;
 
@@ -35,7 +33,6 @@ const AdminBooking = () => {
                         address: selectedBooking.address,
                         date: selectedBooking.date,
                         time: selectedBooking.time,
-
                         totalPay: selectedBooking.totalPay
                     }),
                 }
@@ -55,7 +52,6 @@ const AdminBooking = () => {
         }
     };
 
-    // Delete Booking Handler - নতুন URL অনুযায়ী
     const handleDeleteBooking = async (bookingId) => {
         if (!window.confirm("Are you sure you want to delete this booking?")) {
             return;

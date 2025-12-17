@@ -24,8 +24,6 @@ const DateTime = () => {
         }
     });
 
-    console.log("address:", liveAddress.displayAddress);
-
     // Format date to display
     const formatDateForDisplay = (dateString) => {
         if (!dateString) return "";
